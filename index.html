@@ -53,7 +53,7 @@
 
             // Gaussian Splatting
             var gs = new BABYLON.GaussianSplattingMesh("Halo", null, scene);
-            gs.loadFileAsync("https://gsclab.kr/ply/poiny_cloud.ply").then(()=>{
+            gs.loadFileAsync("https://gsclab.kr/ply/point_cloud.ply").then(()=>{
                 gs.position.y = 0;
                 gs.scaling = new BABYLON.Vector3(1, 1, 1);
             });
