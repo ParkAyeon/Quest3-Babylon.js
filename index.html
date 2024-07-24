@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+        <title>Babylon Template</title>
+
+        <style>
+            html, body {
+                overflow: hidden;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            #renderCanvas {
+                width: 100%;
+                height: 100%;
+                touch-action: none;
+            }
+        </style>
+
+        <script src="https://cdn.babylonjs.com/babylon.js"></script>
+        <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+
+    </head>
+
+   <body>
+
+	<canvas id="renderCanvas"></canvas>
+
+	<script>
+        const canvas = document.getElementById("renderCanvas"); // Get the canvas element
+        const engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
+        const createScene = function () {
+            // This creates a basic Babylon Scene object (non-mesh)
+            var scene = new BABYLON.Scene(engine);
+
+            // This creates and positions a free camera (non-mesh)
+            var camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 0, 0), scene);
+
+            // This targets the camera to scene origin
+            camera.setTarget(BABYLON.Vector3.Zero());
+
+            // This attaches the camera to the canvas
+            camera.attachControl(canvas, true);
+
+            // This creates a light, aiming 0,1,0 - to the sky (non-mesh)
+            var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+
+            // Default intensity is 1. Let's dim the light a small amount
+            light.intensity = 0.7;
+
+            // Gaussian Splatting
+            var gs = new BABYLON.GaussianSplattingMesh("Halo", null, scene);
+            gs.loadFileAsync("https://raw.githubusercontent.com/ParkAyeon/GS-Quest3/main/cutout_point_cloud.ply").then(()=>{
+                gs.position.y = 0;
+                gs.scaling = new BABYLON.Vector3(1, 1, 1);
+            });
+
+            //Sphere
+            var sphere = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
+            sphere.position = gs.position.clone();
+            gs.parent = sphere; // Make gs follow the sphere
+
+            // GUI
+            var plane = BABYLON.Mesh.CreatePlane("plane", 1);
+            plane.isNearPickable = true;
+            plane.position = new BABYLON.Vector3(0, 3, 0)
+            var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(plane);
+            var panel = new BABYLON.GUI.StackPanel();
+            advancedTexture.addControl(panel);
+
+            var header = new BABYLON.GUI.TextBlock();
+            header.text = camera.position.x;
+            header.height = "100px";
+            header.color = "white";
+            header.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+            header.fontSize = "120";
+            panel.addControl(header);
+
+            // Add a text block to show camera position
+            var cameraPositionText = new BABYLON.GUI.TextBlock();
+            cameraPositionText.text = "Camera Position: X: 0.00, Y: 0.00, Z: 0.00";
+            cameraPositionText.height = "30px";
+            cameraPositionText.color = "white";
+            cameraPositionText.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+            panel.addControl(cameraPositionText);
+
+            var addSlider = function (text, min, max, value, callback) {
+                var sliderPanel = new BABYLON.GUI.StackPanel();
+                sliderPanel.height = "100px";
+
+                var textBlock = new BABYLON.GUI.TextBlock();
+                textBlock.text = text + ": " + value.toFixed(2);
+                textBlock.height = "30px";
+                textBlock.color = "white";
+                textBlock.textHorizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+                sliderPanel.addControl(textBlock);
+
+                var slider = new BABYLON.GUI.Slider();
+                slider.minimum = min;
+                slider.maximum = max;
+                slider.value = value;
+                slider.height = "50px";
+                slider.width = "400px";
+                slider.onValueChangedObservable.add(function (newValue) {
+                    textBlock.text = text + ": " + newValue.toFixed(2);
+                    callback(newValue);
+                });
+
+                sliderPanel.addControl(slider);
+                panel.addControl(sliderPanel);
+            }
+
+            addSlider("Position X", -10, 10, gs.position.x, function (value) {
+                gs.position.x = value;
+                sphere.position.x = value;
+            });
+
+            addSlider("Position Y", -10, 10, gs.position.y, function (value) {
+                gs.position.y = value;
+                sphere.position.y = value;
+            });
+
+            addSlider("Position Z", -10, 10, gs.position.z, function (value) {
+                gs.position.z = value;
+                sphere.position.z = value;
+            });
+
+            // Create sliders and labels for X, Y, Z rotations
+            addSlider("Rotation X", -Math.PI, Math.PI, gs.rotation.x, function (value) {
+                gs.rotation.x = value;
+            });
+
+            addSlider("Rotation Y", -Math.PI, Math.PI, gs.rotation.y, function (value) {
+                gs.rotation.y = value;
+            });
+
+            addSlider("Rotation Z", -Math.PI, Math.PI, gs.rotation.z, function (value) {
+                gs.rotation.z = value;
+            });
+
+            // XR
+            const xrHelper = scene.createDefaultXRExperienceAsync({
+                uiOptions: {
+                    sessionMode: "immersive-ar",
+                }
+            });
+
+            scene.onBeforeRenderObservable.add(() => {
+                if (xrHelper.baseExperience && xrHelper.baseExperience.camera) {
+                    const xrCamera = xrHelper.baseExperience.camera;
+                    cameraPositionText.text = `Camera Position: X: ${xrCamera.position.x.toFixed(2)}, Y: ${xrCamera.position.y.toFixed(2)}, Z: ${xrCamera.position.z.toFixed(2)}`;
+                }
+            });
+
+            let meshAttachedToController = false;
+
+            scene.onPointerObservable.add((pointerInfo) => {
+                if (pointerInfo.pickInfo.hit && pointerInfo.pickInfo.pickedMesh === sphere) {  // Only pick the sphere
+                    if (xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR) {
+                        let xrInput = xrHelper.pointerSelection.getXRControllerByPointerId(pointerInfo.event.pointerId);
+                        let motionController = xrInput.motionController;
+                        if (motionController) {
+                            if (meshAttachedToController) {
+                                sphere.setParent(null);
+                                meshAttachedToController = false;
+                            } else {
+                                sphere.setParent(motionController.rootMesh);
+                                meshAttachedToController = true;
+                            }
+                        }
+                    } else {
+                        // Non-XR support
+                        if (meshAttachedToController) {
+                            sphere.setParent(null);
+                            meshAttachedToController = false;
+                        } else {
+                            sphere.setParent(scene.activeCamera);
+                            meshAttachedToController = true;
+                        }
+                    }
+                }
+            }, BABYLON.PointerEventTypes.POINTERDOWN);
+
+            scene.registerBeforeRender(function() {
+                gs.position.x = sphere.position.x;
+                gs.position.y = sphere.position.y;
+                gs.position.z = sphere.position.z;
+            });
+
+            return scene;
+        };
+        var scene = createScene(); //Call the createScene function
+        // Register a render loop to repeatedly render the scene
+        engine.runRenderLoop(function () {
+                scene.render();
+        });
+        // Watch for browser/canvas resize events
+        window.addEventListener("resize", function () {
+                engine.resize();
+        });
+	</script>
+
+   </body>
+
+</html>
